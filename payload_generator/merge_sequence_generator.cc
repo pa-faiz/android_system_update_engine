@@ -19,7 +19,6 @@
 #include <algorithm>
 #include <limits>
 
-#include "update_engine/payload_generator/delta_diff_generator.h"
 #include "update_engine/payload_generator/extent_ranges.h"
 #include "update_engine/payload_generator/extent_utils.h"
 #include "update_engine/update_metadata.pb.h"
@@ -177,7 +176,8 @@ static bool ProcessCopyOps(std::vector<CowMergeOperation>* sequence,
 }
 
 std::unique_ptr<MergeSequenceGenerator> MergeSequenceGenerator::Create(
-    const std::vector<AnnotatedOperation>& aops) {
+    const std::vector<AnnotatedOperation>& aops,
+    std::string_view partition_name) {
   std::vector<CowMergeOperation> sequence;
 
   for (const auto& aop : aops) {
@@ -192,25 +192,24 @@ std::unique_ptr<MergeSequenceGenerator> MergeSequenceGenerator::Create(
     }
   }
 
-  std::sort(sequence.begin(), sequence.end());
   return std::unique_ptr<MergeSequenceGenerator>(
-      new MergeSequenceGenerator(sequence));
+      new MergeSequenceGenerator(sequence, partition_name));
 }
 
-bool MergeSequenceGenerator::FindDependency(
-    std::map<CowMergeOperation, std::set<CowMergeOperation>>* result) const {
-  CHECK(result);
+std::map<CowMergeOperation, std::set<CowMergeOperation>>
+MergeSequenceGenerator::FindDependency(
+    const std::vector<CowMergeOperation>& operations) {
   LOG(INFO) << "Finding dependencies";
 
   // Since the OTA operation may reuse some source blocks, use the binary
   // search on sorted dst extents to find overlaps.
   std::map<CowMergeOperation, std::set<CowMergeOperation>> merge_after;
-  for (const auto& op : operations_) {
+  for (const auto& op : operations) {
     // lower bound (inclusive): dst extent's end block >= src extent's start
     // block.
     const auto lower_it = std::lower_bound(
-        operations_.begin(),
-        operations_.end(),
+        operations.begin(),
+        operations.end(),
         op,
         [](const CowMergeOperation& it, const CowMergeOperation& op) {
           auto dst_end_block =
@@ -220,7 +219,7 @@ bool MergeSequenceGenerator::FindDependency(
     // upper bound: dst extent's start block > src extent's end block
     const auto upper_it = std::upper_bound(
         lower_it,
-        operations_.end(),
+        operations.end(),
         op,
         [](const CowMergeOperation& op, const CowMergeOperation& it) {
           auto src_end_block =
@@ -244,18 +243,12 @@ bool MergeSequenceGenerator::FindDependency(
     }
   }
 
-  *result = std::move(merge_after);
-  return true;
+  return merge_after;
 }
 
 bool MergeSequenceGenerator::Generate(
     std::vector<CowMergeOperation>* sequence) const {
   sequence->clear();
-  std::map<CowMergeOperation, std::set<CowMergeOperation>> merge_after;
-  if (!FindDependency(&merge_after)) {
-    LOG(ERROR) << "Failed to find dependencies";
-    return false;
-  }
 
   LOG(INFO) << "Generating sequence";
 
@@ -263,7 +256,7 @@ bool MergeSequenceGenerator::Generate(
   // operations to discard to break cycles; thus yielding a deterministic
   // sequence.
   std::map<CowMergeOperation, int> incoming_edges;
-  for (const auto& it : merge_after) {
+  for (const auto& it : merge_after_) {
     for (const auto& blocked : it.second) {
       // Value is default initialized to 0.
       incoming_edges[blocked] += 1;
@@ -302,7 +295,7 @@ bool MergeSequenceGenerator::Generate(
       // Now that this particular operation is merged, other operations
       // blocked by this one may be free. Decrement the count of blocking
       // operations, and set up the free operations for the next iteration.
-      for (const auto& blocked : merge_after[op]) {
+      for (const auto& blocked : merge_after_.at(op)) {
         auto it = incoming_edges.find(blocked);
         if (it == incoming_edges.end()) {
           continue;
@@ -347,7 +340,8 @@ bool MergeSequenceGenerator::Generate(
   }
 
   LOG(INFO) << "Blocks in merge sequence " << blocks_in_sequence
-            << ", blocks in raw " << blocks_in_raw;
+            << ", blocks in raw " << blocks_in_raw << ", partition "
+            << partition_name_;
   if (!ValidateSequence(merge_sequence)) {
     LOG(ERROR) << "Invalid Sequence";
     return false;
