@@ -16,6 +16,8 @@
 
 #include "update_engine/payload_consumer/vabc_partition_writer.h"
 
+#include <algorithm>
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>

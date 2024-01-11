@@ -49,18 +49,7 @@ aidl_interface {
             ],
         },
     },
-    versions_with_info: [
-        {
-            version: "1",
-            imports: [],
-        },
-        {
-            version: "2",
-            imports: [],
-        },
-    ],
-    frozen: true,
-
+    versions: ["1"],
 }
 
 // update_engine_stable_client (type: executable)
@@ -79,7 +68,7 @@ cc_binary {
     ],
     static_libs: [
         "libgflags",
-        "libupdate_engine_stable-V2-ndk",
+        "libupdate_engine_stable-V1-ndk",
     ],
     srcs: [
         "update_engine_stable_client.cc",

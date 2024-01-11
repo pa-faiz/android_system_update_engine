@@ -28,7 +28,7 @@ namespace chromeos_update_engine {
 // generators to put an estimate cow size in OTA payload. When installing an OTA
 // update, libsnapshot will take this estimate as a hint to allocate spaces.
 // If |xor_enabled| is true, then |source_fd| must be non-null.
-android::snapshot::CowSizeInfo EstimateCowSizeInfo(
+size_t EstimateCowSize(
     FileDescriptorPtr source_fd,
     FileDescriptorPtr target_fd,
     const google::protobuf::RepeatedPtrField<InstallOperation>& operations,
@@ -37,8 +37,7 @@ android::snapshot::CowSizeInfo EstimateCowSizeInfo(
     const size_t block_size,
     std::string compression,
     const size_t partition_size,
-    bool xor_enabled,
-    uint32_t cow_version);
+    bool xor_enabled);
 
 // Convert InstallOps to CowOps and apply the converted cow op to |cow_writer|
 bool CowDryRun(
