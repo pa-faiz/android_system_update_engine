@@ -75,7 +75,7 @@ class PartitionProcessor : public base::DelegateSimpleThread::Delegate {
       BlobFileWriter* file_writer,
       std::vector<AnnotatedOperation>* aops,
       std::vector<CowMergeOperation>* cow_merge_sequence,
-      android::snapshot::CowSizeInfo* cow_info,
+      size_t* cow_size,
       std::unique_ptr<chromeos_update_engine::OperationsGenerator> strategy)
       : config_(config),
         old_part_(old_part),
@@ -83,7 +83,7 @@ class PartitionProcessor : public base::DelegateSimpleThread::Delegate {
         file_writer_(file_writer),
         aops_(aops),
         cow_merge_sequence_(cow_merge_sequence),
-        cow_info_(cow_info),
+        cow_size_(cow_size),
         strategy_(std::move(strategy)) {}
   PartitionProcessor(PartitionProcessor&&) noexcept = default;
 
@@ -134,7 +134,7 @@ class PartitionProcessor : public base::DelegateSimpleThread::Delegate {
       source_fd->Open(old_part_.path.c_str(), O_RDONLY);
     }
 
-    *cow_info_ = EstimateCowSizeInfo(
+    *cow_size_ = EstimateCowSize(
         std::move(source_fd),
         std::move(target_fd),
         std::move(operations),
@@ -142,13 +142,9 @@ class PartitionProcessor : public base::DelegateSimpleThread::Delegate {
         config_.block_size,
         config_.target.dynamic_partition_metadata->vabc_compression_param(),
         new_part_.size,
-        config_.enable_vabc_xor,
-        config_.target.dynamic_partition_metadata->cow_version());
-
-    // ops buffer size == 0 for v2 version of cow format
+        config_.enable_vabc_xor);
     LOG(INFO) << "Estimated COW size for partition: " << new_part_.name << " "
-              << cow_info_->cow_size
-              << " ops buffer size: " << cow_info_->op_count_max;
+              << *cow_size_;
   }
 
  private:
@@ -158,7 +154,7 @@ class PartitionProcessor : public base::DelegateSimpleThread::Delegate {
   BlobFileWriter* file_writer_;
   std::vector<AnnotatedOperation>* aops_;
   std::vector<CowMergeOperation>* cow_merge_sequence_;
-  android::snapshot::CowSizeInfo* cow_info_;
+  size_t* cow_size_;
   std::unique_ptr<chromeos_update_engine::OperationsGenerator> strategy_;
   DISALLOW_COPY_AND_ASSIGN(PartitionProcessor);
 };
@@ -192,8 +188,7 @@ bool GenerateUpdatePayloadFile(const PayloadGenerationConfig& config,
     std::vector<std::vector<CowMergeOperation>> all_merge_sequences;
     all_merge_sequences.resize(config.target.partitions.size());
 
-    std::vector<android::snapshot::CowSizeInfo> all_cow_info(
-        config.target.partitions.size());
+    std::vector<size_t> all_cow_sizes(config.target.partitions.size(), 0);
 
     std::vector<PartitionProcessor> partition_tasks{};
     auto thread_count = std::min<int>(diff_utils::GetMaxThreads(),
@@ -228,7 +223,7 @@ bool GenerateUpdatePayloadFile(const PayloadGenerationConfig& config,
                                                    &blob_file,
                                                    &all_aops[i],
                                                    &all_merge_sequences[i],
-                                                   &all_cow_info[i],
+                                                   &all_cow_sizes[i],
                                                    std::move(strategy)));
     }
     thread_pool.Start();
@@ -246,7 +241,7 @@ bool GenerateUpdatePayloadFile(const PayloadGenerationConfig& config,
                                new_part,
                                std::move(all_aops[i]),
                                std::move(all_merge_sequences[i]),
-                               all_cow_info[i]));
+                               all_cow_sizes[i]));
     }
   }
   data_file.CloseFd();

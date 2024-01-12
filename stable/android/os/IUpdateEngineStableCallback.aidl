@@ -18,7 +18,6 @@ package android.os;
 
 /**
  * The stable Callback interface for IUpdateEngineStable.
- * @hide
  */
 oneway interface IUpdateEngineStableCallback {
   /**
@@ -27,7 +26,6 @@ oneway interface IUpdateEngineStableCallback {
    * @param status_code see {@link android.os.UpdateEngine.UpdateStatusConstants}.
    * @param percentage percentage of progress of the current stage.
    * @see android.os.UpdateEngineCallback#onStatusUpdate(int, float)
-   * @hide
    */
   void onStatusUpdate(int status_code, float percentage);
 
@@ -36,7 +34,6 @@ oneway interface IUpdateEngineStableCallback {
    *
    * @param error_code see {@link android.os.UpdateEngine.ErrorCodeConstants}
    * @see android.os.UpdateEngineCallback#onPayloadApplicationComplete(int)
-   * @hide
    */
   void onPayloadApplicationComplete(int error_code);
 }

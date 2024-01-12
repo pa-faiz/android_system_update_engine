@@ -24,8 +24,8 @@
 
 #include <android-base/unique_fd.h>
 #include <libsnapshot/cow_writer.h>
-#include <libsnapshot/cow_format.h>
 
+#include "update_engine/common/cow_operation_convert.h"
 #include "update_engine/common/utils.h"
 #include "update_engine/payload_consumer/vabc_partition_writer.h"
 #include "update_engine/payload_generator/extent_ranges.h"
@@ -136,7 +136,7 @@ bool CowDryRun(
   return cow_writer->Finalize();
 }
 
-android::snapshot::CowSizeInfo EstimateCowSizeInfo(
+size_t EstimateCowSize(
     FileDescriptorPtr source_fd,
     FileDescriptorPtr target_fd,
     const google::protobuf::RepeatedPtrField<InstallOperation>& operations,
@@ -145,13 +145,12 @@ android::snapshot::CowSizeInfo EstimateCowSizeInfo(
     const size_t block_size,
     std::string compression,
     const size_t partition_size,
-    const bool xor_enabled,
-    uint32_t cow_version) {
+    const bool xor_enabled) {
   android::snapshot::CowOptions options{
       .block_size = static_cast<uint32_t>(block_size),
-      .compression = std::move(compression),
-      .max_blocks = (partition_size / block_size)};
-  auto cow_writer = CreateCowEstimator(cow_version, options);
+      .compression = std::move(compression)};
+  auto cow_writer =
+      CreateCowEstimator(android::snapshot::kCowVersionManifest, options);
   CHECK_NE(cow_writer, nullptr) << "Could not create cow estimator";
   CHECK(CowDryRun(source_fd,
                   target_fd,
@@ -161,7 +160,7 @@ android::snapshot::CowSizeInfo EstimateCowSizeInfo(
                   cow_writer.get(),
                   partition_size,
                   xor_enabled));
-  return cow_writer->GetCowSizeInfo();
+  return cow_writer->GetCowSize();
 }
 
 }  // namespace chromeos_update_engine
