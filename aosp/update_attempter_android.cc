@@ -23,6 +23,7 @@
 #include <utility>
 #include <vector>
 
+#include <android-base/parsebool.h>
 #include <android-base/properties.h>
 #include <android-base/unique_fd.h>
 #include <base/bind.h>
@@ -242,18 +243,18 @@ bool UpdateAttempterAndroid::ApplyPayload(
     const vector<string>& key_value_pair_headers,
     Error* error) {
   if (status_ == UpdateStatus::UPDATED_NEED_REBOOT) {
-    return LogAndSetGenericError(
-        error,
-        __LINE__,
-        __FILE__,
-        "An update already applied, waiting for reboot");
+    return LogAndSetError(error,
+                          __LINE__,
+                          __FILE__,
+                          "An update already applied, waiting for reboot",
+                          ErrorCode::kUpdateAlreadyInstalled);
   }
   if (processor_->IsRunning()) {
-    return LogAndSetGenericError(
-        error,
-        __LINE__,
-        __FILE__,
-        "Already processing an update, cancel it first.");
+    return LogAndSetError(error,
+                          __LINE__,
+                          __FILE__,
+                          "Already processing an update, cancel it first.",
+                          ErrorCode::kUpdateProcessing);
   }
   DCHECK_EQ(status_, UpdateStatus::IDLE);
 
@@ -391,7 +392,11 @@ bool UpdateAttempterAndroid::ApplyPayload(
     install_plan_.vabc_none = true;
   }
   if (!headers[kPayloadEnableThreading].empty()) {
-    install_plan_.enable_threading = true;
+    const auto res = android::base::ParseBool(headers[kPayloadEnableThreading]);
+    if (res != android::base::ParseBoolResult::kError) {
+      install_plan_.enable_threading =
+          res == android::base::ParseBoolResult::kTrue;
+    }
   }
   if (!headers[kPayloadBatchedWrites].empty()) {
     install_plan_.batched_writes = true;
@@ -638,6 +643,14 @@ bool UpdateAttempterAndroid::VerifyPayloadApplicable(
   ErrorCode errorcode{};
 
   BootControlInterface::Slot current_slot = GetCurrentSlot();
+  if (current_slot < 0) {
+    return LogAndSetError(
+        error,
+        __LINE__,
+        __FILE__,
+        "Failed to get current slot " + std::to_string(current_slot),
+        ErrorCode::kDownloadStateInitializationError);
+  }
   for (const PartitionUpdate& partition : manifest.partitions()) {
     if (!partition.has_old_partition_info())
       continue;
